@@ -1,0 +1,991 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title> Recognize objects</title>
+
+        <script src="https://unpkg.com/jspsych@7.1.2"></script>
+        <script src="https://unpkg.com/@jspsych/plugin-instructions@1.1.0"></script>
+        <script src="https://unpkg.com/@jspsych/plugin-html-keyboard-response@1.1.0"></script>
+        <script src="https://unpkg.com/@jspsych/plugin-html-button-response@1.1.0"></script>
+        <script src="https://unpkg.com/@jspsych/plugin-video-keyboard-response@1.1.0"></script>
+        <script src="https://unpkg.com/@jspsych/plugin-video-button-response@1.1.0"></script>
+
+        <script src="https://unpkg.com/@jspsych/plugin-image-button-response@1.1.0"></script>
+        <script src="https://unpkg.com/@jspsych/plugin-image-keyboard-response@1.1.0"></script>
+        <script src="https://unpkg.com/@jspsych/plugin-animation@1.1.0"></script>
+        <script src="https://unpkg.com/@jspsych/plugin-preload@1.1.0"></script>
+        <script src="https://unpkg.com/@jspsych/plugin-fullscreen@1.1.0"></script>
+        <link href="https://unpkg.com/jspsych@7.1.2/css/jspsych.css" rel="stylesheet" type="text/css">
+      
+        <!-- variable matches filename (e.g. var tokens_simple_objects) -->
+        <script type="text/javascript" src="tokens_simple_objects.js"></script>
+        <script type="text/javascript" src="tests_simple_objects.js"></script>
+        <script type="text/javascript" src="covers_simple_objects.js"></script>
+        <script type="text/javascript" src="constants_faces.js"></script>
+
+        <!-- variable matches filename (e.g. var tokens_face_objects) -->
+        <script type="text/javascript" src="tokens_face_objects.js"></script>
+        <script type="text/javascript" src="tests_face_objects.js"></script>
+        <script type="text/javascript" src="covers_face_objects.js"></script>
+    </head>
+
+    <!-- <div id="experiment_link">You must accept the HIT to begin the experiment</div>. -->
+
+    <body style="background-color: grey"></body>
+
+    <script>
+
+        const SANDBOX_MODE          = true;
+
+        // experiment parameters
+        const OBJECT_PAIRS          = [2, 3]; // face0005& face0006
+        const OBJECT_PAIR_CONTROL   = [1, 6];
+        
+        // combo
+        const EXPT_TYPE             = 'combo';
+
+        const TARGET_SIZE_IDX       = 2; // large
+        const TARGET_SIZE           = SIZES[TARGET_SIZE_IDX];
+
+        var NUM_EXPOSURE_PHASES     = 4;
+        var NUM_TEST_PHASES         = NUM_EXPOSURE_PHASES + 1;
+        var TEST_PHASE_COUNT        = 0;
+
+        var TEST_PHASE_SETS         = new Array(NUM_TEST_PHASES);
+        
+        var NUM_EXPOSURE_EVENTS     = 100;
+        var EXPOSURE_REPS           = 100; // 4 types x 100 reps = 400 exposures/block
+        var MEDIUM_SIZE_IDX         = 1; 
+
+
+        var EXPOSURE_PHASE_SETS     = new Array(NUM_EXPOSURE_PHASES);
+        var TEST_PHASE_SETS         = new Array(NUM_EXPOSURE_PHASES + 1);
+        var EXPOSURE_COUNT          = 0;
+
+        var TRIAL_ID                = 0;
+        var CATCH_TRIAL_ID          = 0;
+        var num_catch_trials        = 8;//tokens_simple_objects.objects.length;
+        var catch_stimuli           = new Array(num_catch_trials);
+
+        var num_warmup_trials_per_obj           = 3;
+        var num_warmup_trials       = num_warmup_trials_per_obj * 4; //updated in init()
+        var warmup_stimuli          = new Array();                   //updated in init()
+        var warmup_stimuli_ms       = 1000;
+        var warmup_trial_ms         = 1000;
+        var WARMUP_TRIAL_ID         = 0;
+
+        var num_prescreen_trials_per_obj        = num_warmup_trials_per_obj;
+        var num_prescreen_trials    = num_prescreen_trials_per_obj * 4; //updated in init()
+        var prescreen_stimuli       = new Array();                      //updated in init()
+        var PRESCREEN_TRIAL_ID      = 0;
+
+        var NUM_OBJ_EXPT            = 4; // 2 pairs (small & large)
+        var OBJ_LIST                = new Array(NUM_OBJ_EXPT);
+        var TOKENS_URL              = new Array(NUM_OBJ_EXPT);
+
+        var CATCH_THRESH            = 70;
+        var TEST_THRESH             = 60;
+        var CONTINUE_EXPT           = true;
+        var num_test_images         = 0;
+
+
+        var jsPsych                 = initJsPsych({
+            fullscreen_mode: true,
+            show_preload_progress_bar: true,
+            show_progress_bar: true,
+            on_finish: function() {
+                var data_collection = jsPsych.data.get();
+                
+                // source: Michael Lee
+                // Check to see if we should submit to the Mechanical Turk Sandbox server
+                let external_question_submission_url = MTURK_SUBMISSION_URL; 
+                if (SANDBOX_MODE === true){
+                    external_question_submission_url = MTURK_SUBMISSION_URL_SANDBOX;
+                }
+
+                // Create the submission form
+                let submission_form = document.createElement("form");
+                document.body.appendChild(submission_form);
+                submission_form.setAttribute("method", "post");
+                submission_form.setAttribute("action", external_question_submission_url);
+                submission_form.style = "display: none;";
+
+                // Attach inputs to the submission form
+                let submission_data_input = document.createElement("input");
+                submission_data_input.setAttribute("name", 'submission_data');
+                submission_form.appendChild(submission_data_input);
+
+                let assignmentId_input = document.createElement("input");
+                assignmentId_input.setAttribute("name", 'assignmentId');
+                submission_form.appendChild(assignmentId_input);
+
+                // Fill out form
+                let session_data_string = data_collection.json();
+
+                assignmentId_input.value = turk_info.assignmentId;
+                submission_data_input.value = session_data_string;
+
+                let currently_debugging = window.location.href.includes('file:');
+                if (currently_debugging == false){
+                    submission_form.submit();
+                }
+                else{
+                    console.log('Currently on localhost; not submitting to turk');
+                    console.log('Data object:', data_collection.json());
+                }
+            }
+        });
+        
+        /* TURK */
+        var turk_info               = jsPsych.turk.turkInfo();
+        
+        /* timeline */
+        var timeline    = [];
+
+        shuffle = function(o) { 
+            for(var j, x, i = o.length; i; j = parseInt(Math.random() * i), x = o[--i], o[i] = o[j], o[j] = x);
+            return o;
+        };
+
+        /*************************** ALLOCATE STIMULI ***************************/
+        // preload warmup trial images
+        var preload_warmup_stimuli = function(object_list) {
+            
+            var warmup_images   = new Array();
+            var num_obj_warmup  = object_list.length;
+            
+            // tokens
+            var token_size_idx      = SIZES.indexOf(1);
+            var warmup_tokens_url   = new Array(num_obj_warmup);
+            for (var i = 0; i < num_obj_warmup; i++) {
+                warmup_tokens_url[i]   = tokens_face_objects.id[object_list[i]][token_size_idx];
+            }
+            
+            // test images
+            object_tokens       = [[A,B], [B,A], [C,D], [D,C]];
+            for (var i = 0; i < num_obj_warmup; i++) {
+
+                i_obj_ID        = object_list[i];
+
+                // use cover trials
+                // randomize token positions outside of this function
+                covers = covers_face_objects.id[i_obj_ID].slice(0, num_warmup_trials_per_obj);
+                covers.forEach( function(coverImg) {
+                    var covers_tuple = new Array(3);
+                    covers_tuple[0] = coverImg;
+                    covers_tuple[1] = warmup_tokens_url[object_tokens[i][0]];
+                    covers_tuple[2] = warmup_tokens_url[object_tokens[i][1]];
+                    warmup_images   = warmup_images.concat([covers_tuple]);
+                });;
+            }
+
+            return warmup_images;
+        }
+
+        // preload prescreen images
+        var preload_prescreen_stimuli = function(object_list) {
+            
+            var prescreen_images    = new Array();
+            var num_obj_prescreen   = object_list.length;
+            
+            // tokens
+            token_size_idx          = SIZES.indexOf(1);
+            prescreen_tokens_url    = new Array(num_obj_prescreen);
+            for (var i = 0; i < num_obj_prescreen; i++) {
+                prescreen_tokens_url[i]   = tokens_face_objects.id[object_list[i]][token_size_idx];
+            }
+            
+            // test images
+            object_tokens       = [[A,B], [B,A], [C,D], [D,C]];
+            for (var i = 0; i < num_obj_prescreen; i++) {
+
+                i_obj_ID        = object_list[i];
+
+                // use cover trials
+                // randomize token positions outside of this function
+                covers = covers_face_objects.id[i_obj_ID].slice(0, num_prescreen_trials_per_obj);
+                covers.forEach( function(coverImg) {
+                    var covers_tuple    = new Array(3);
+                    covers_tuple[0]     = coverImg;
+                    covers_tuple[1]     = prescreen_tokens_url[object_tokens[i][0]];
+                    covers_tuple[2]     = prescreen_tokens_url[object_tokens[i][1]];
+                    prescreen_images    = prescreen_images.concat([covers_tuple]);
+                });
+            }
+
+            return prescreen_images;
+        }
+
+        // preload test phase images
+        var preload_test_phases = function(object_list) {
+            
+            var test_phase_images   = new Array();
+        
+            // tokens
+            token_size_idx      = SIZES.indexOf(1);
+            for (var i = 0; i < NUM_OBJ_EXPT; i++) {
+                TOKENS_URL[i]   = tokens_face_objects.id[object_list[i]][token_size_idx];
+            }
+            // positions are randomized when aggregating the whole list of test images
+            object_tokens       = [[A,B], [B,A], [C,D], [D,C]];
+            
+            // test images
+            for (var i = 0; i < object_list.length; i++) {
+
+                i_obj_ID        = object_list[i];
+
+                // test - small sizes
+                tests_small         = tests_face_objects.id[i_obj_ID][0].slice(0, NUM_TESTS_SMALL);
+
+                tests_small.forEach( function(testImg) {
+                    var tests_small_tuple   = new Array(3);
+                    tests_small_tuple[0] = testImg;
+                    tests_small_tuple[1] = TOKENS_URL[object_tokens[i][0]];
+                    tests_small_tuple[2] = TOKENS_URL[object_tokens[i][1]];
+                    
+                    test_phase_images = test_phase_images.concat([tests_small_tuple]);
+                });
+
+                // test - large sizes
+                tests_large = tests_face_objects.id[i_obj_ID][2].slice(0, NUM_TESTS_LARGE);
+                tests_large.forEach( function(testImg) {
+                    var tests_large_tuple = new Array(3);
+                    tests_large_tuple[0] = testImg;
+                    tests_large_tuple[1] = TOKENS_URL[object_tokens[i][0]];
+                    tests_large_tuple[2] = TOKENS_URL[object_tokens[i][1]];
+
+                    test_phase_images = test_phase_images.concat([tests_large_tuple]);
+                });
+
+                // cover trials
+                covers = covers_face_objects.id[i_obj_ID].slice(0, NUM_COVERS);
+                covers.forEach( function(coverImg) {
+                    var covers_tuple = new Array(3);
+                    covers_tuple[0] = coverImg;
+                    covers_tuple[1] = TOKENS_URL[object_tokens[i][0]];
+                    covers_tuple[2] = TOKENS_URL[object_tokens[i][1]];
+
+                    test_phase_images = test_phase_images.concat([covers_tuple]);
+                });
+            }
+            shuffle(test_phase_images);
+            console.log(test_phase_images.length);
+
+            return test_phase_images;
+        }
+
+        // allocate non-swapping exposure phase images
+        var preload_nonswapping_exposure_phases = function(object_list) {
+
+            var list_of_image_pairs   = new Array();
+
+            swapped_pair_exposure   = new Array();
+
+            // A* -> A (*: target size)
+            expo_pair_1_mirror      = new Array(2);
+            expo_pair_1_mirror[0]   = tokens_face_objects.id[object_list[A]][TARGET_SIZE_IDX];
+            expo_pair_1_mirror[1]   = tokens_face_objects.id[object_list[A]][MEDIUM_SIZE_IDX];
+            swapped_pair_exposure   = swapped_pair_exposure.concat([expo_pair_1_mirror]);
+
+            // A -> A*
+            expo_pair_1             = new Array(2);
+            expo_pair_1[0]          = tokens_face_objects.id[object_list[A]][MEDIUM_SIZE_IDX];
+            expo_pair_1[1]          = tokens_face_objects.id[object_list[A]][TARGET_SIZE_IDX];
+            swapped_pair_exposure   = swapped_pair_exposure.concat([expo_pair_1]);
+
+            // B -> B*
+            expo_pair_2             = new Array(2);
+            expo_pair_2[0]          = tokens_face_objects.id[object_list[B]][MEDIUM_SIZE_IDX];
+            expo_pair_2[1]          = tokens_face_objects.id[object_list[B]][TARGET_SIZE_IDX];
+            swapped_pair_exposure   = swapped_pair_exposure.concat([expo_pair_2]);
+
+            // B* -> B
+            expo_pair_2_mirror      = new Array(2);
+            expo_pair_2_mirror[0]   = tokens_face_objects.id[object_list[B]][TARGET_SIZE_IDX];
+            expo_pair_2_mirror[1]   = tokens_face_objects.id[object_list[B]][MEDIUM_SIZE_IDX];
+            swapped_pair_exposure   = swapped_pair_exposure.concat([expo_pair_2_mirror]);
+
+            for (var i = 0; i < EXPOSURE_REPS; i++) {
+                list_of_image_pairs = list_of_image_pairs.concat(swapped_pair_exposure);
+            }
+            shuffle(list_of_image_pairs);
+            
+            return list_of_image_pairs;
+        }
+
+        // allocate swapping exposure phase images
+        var preload_swapping_exposure_phases = function(object_list) {
+
+            var list_of_image_pairs   = new Array();
+
+            swapped_pair_exposure   = new Array();
+
+            // A* -> B (*: target size)
+            expo_pair_1_mirror      = new Array(2);
+            expo_pair_1_mirror[0]   = tokens_face_objects.id[object_list[A]][TARGET_SIZE_IDX];
+            expo_pair_1_mirror[1]   = tokens_face_objects.id[object_list[B]][MEDIUM_SIZE_IDX];
+            swapped_pair_exposure   = swapped_pair_exposure.concat([expo_pair_1_mirror]);
+
+            // B -> A*
+            expo_pair_1             = new Array(2);
+            expo_pair_1[0]          = tokens_face_objects.id[object_list[B]][MEDIUM_SIZE_IDX];
+            expo_pair_1[1]          = tokens_face_objects.id[object_list[A]][TARGET_SIZE_IDX];
+            swapped_pair_exposure   = swapped_pair_exposure.concat([expo_pair_1]);
+
+            // A -> B*
+            expo_pair_2             = new Array(2);
+            expo_pair_2[0]          = tokens_face_objects.id[object_list[A]][MEDIUM_SIZE_IDX];
+            expo_pair_2[1]          = tokens_face_objects.id[object_list[B]][TARGET_SIZE_IDX];
+            swapped_pair_exposure   = swapped_pair_exposure.concat([expo_pair_2]);
+
+            // B* -> A
+            expo_pair_2_mirror      = new Array(2);
+            expo_pair_2_mirror[0]   = tokens_face_objects.id[object_list[B]][TARGET_SIZE_IDX];
+            expo_pair_2_mirror[1]   = tokens_face_objects.id[object_list[A]][MEDIUM_SIZE_IDX];
+            swapped_pair_exposure   = swapped_pair_exposure.concat([expo_pair_2_mirror]);
+
+            for (var i = 0; i < EXPOSURE_REPS; i++) {
+                list_of_image_pairs = list_of_image_pairs.concat(swapped_pair_exposure);
+            }
+            shuffle(list_of_image_pairs);
+            
+            return list_of_image_pairs;
+        }
+        /*************************** END OF ALLOCATING STIMULI ***************************/
+
+        var init_expt = function() {
+            
+            OBJ_LIST[0]     = OBJECT_PAIRS[0];
+            OBJ_LIST[1]     = OBJECT_PAIRS[1];
+            OBJ_LIST[2]     = OBJECT_PAIR_CONTROL[0];
+            OBJ_LIST[3]     = OBJECT_PAIR_CONTROL[1];
+            
+            
+            // allocate test phase images
+            for (var i = 0; i < (NUM_EXPOSURE_PHASES+1); i++) {
+                TEST_PHASE_SETS[i]      = preload_test_phases(OBJ_LIST);
+            }
+            // allocate swapping exposure phase images
+            for (var i = 0; i < NUM_EXPOSURE_PHASES/2; i++) {
+                EXPOSURE_PHASE_SETS[i]  = preload_nonswapping_exposure_phases(OBJ_LIST);
+            }
+            // allocate non-swapping exposure phase images
+            for (var i = NUM_EXPOSURE_PHASES/2; i < NUM_EXPOSURE_PHASES; i++) {
+                EXPOSURE_PHASE_SETS[i]  = preload_swapping_exposure_phases(OBJ_LIST);
+            }
+            // allocate catch trial images
+            for (var i = 0; i < num_catch_trials; i++) {
+                catch_stimuli[i]    = URL_PREFIX.concat(tokens_simple_objects.id[i][2], URL_SUFFIX);
+            }
+            // allocate warmup trial images // fix answers to left token, then randomize
+            warmup_stimuli          = preload_warmup_stimuli(OBJ_LIST);
+            num_warmup_trials       = warmup_stimuli.length;
+            
+            // allocate warmup trial images
+            prescreen_stimuli       = preload_prescreen_stimuli(OBJ_LIST);
+            num_prescreen_trials    = prescreen_stimuli.length;
+
+            if(SANDBOX_MODE == true) {
+                num_test_images     = 5; //num_test_images equals no. of test trials. each image (object + BG) is unique
+                num_exposure_events = 3;
+            }
+            else {
+                num_test_images     = TEST_PHASE_SETS[EXPOSURE_COUNT].length;
+                num_exposure_events = EXPOSURE_PHASE_SETS[EXPOSURE_COUNT].length;
+            }
+        }
+
+        
+        var welcome    = {
+            type:   jsPsychInstructions,
+            data: {
+                'test_objects':     OBJ_LIST,
+                'experiment_type':  EXPT_TYPE,
+                'swap_size':        TARGET_SIZE,
+            },
+            pages:  WELCOME_TEXT,
+            show_clickable_nav: true,
+            func: init_expt(),
+        };
+        timeline.push(welcome);
+
+        var fixation = {
+            type: jsPsychHtmlKeyboardResponse,
+            stimulus: '<div style="font-size:60px;">+</div>',
+            choices: [],
+            trial_duration: 200 
+        };
+
+        
+        /*******************************************************************************/
+        /*********** warmup trials *****************************************************/
+        /*******************************************************************************/
+        var warmup_intro    = {
+            type:   jsPsychInstructions,
+            pages:  WARMUP_TEXT,
+            show_clickable_nav: true,
+        };
+        timeline.push(warmup_intro);
+
+        var warmup_trial_list   = new Array(num_warmup_trials_per_obj);
+        object_tokens           = [[A,B], [B,A]];
+        for (var i = 0; i < warmup_stimuli.length; i++) {
+            let test_url        = URL_FACES_PREFIX.concat(warmup_stimuli[i][0], URL_SUFFIX); 
+            let token1_url      = URL_FACES_PREFIX.concat(warmup_stimuli[i][1], URL_SUFFIX); 
+            let token2_url      = URL_FACES_PREFIX.concat(warmup_stimuli[i][2], URL_SUFFIX); 
+
+            var test            = '<img src='+ test_url + ' width=' + IMG_SIZE_PX + '/>';
+            var answer          = 0;
+            if(Math.random() < 0.50) {
+                var ch1         = '<img src='+ token1_url + ' width=' + IMG_SIZE_PX + '/>';
+                var ch2         = '<img src='+ token2_url + ' width=' + IMG_SIZE_PX + '/>';
+                var answer      = 0;
+            }
+            else {
+                var ch2         = '<img src='+ token1_url + ' width=' + IMG_SIZE_PX + '/>';
+                var ch1         = '<img src='+ token2_url + ' width=' + IMG_SIZE_PX + '/>';
+                var answer      = 1;
+            }
+            var warmup_trial_i   = {
+                timeline: [ fixation, 
+                    
+                    // test image 
+                    {
+                        type: jsPsychImageButtonResponse,
+                        stimulus: test_url, 
+                        stimulus_height: IMG_SIZE_PX, 
+                        choices:[],
+                        trial_duration: warmup_trial_ms,
+                        stimulus_duration: warmup_stimuli_ms,
+                    },
+
+                    // token images
+                    {
+                        type: jsPsychHtmlButtonResponse,
+                        stimulus: '<p> Which face did you see? </p>',
+                        button_html: [ch1,ch2],
+                        choices: ['left','right'],
+                        data: {
+                            correct_response: answer
+                        },
+                    },
+
+                    // feedback
+                    {
+                        type: jsPsychHtmlKeyboardResponse,
+                        stimulus: function() {
+                            var last_trial_correct = jsPsych.data.get().last(1).values()[0].correct_response == jsPsych.data.get().last(1).values()[0].response;
+                            if(last_trial_correct) {
+                                return "<p>Correct! Press any key to continue</p>";
+                            } else {
+                                return "<p>Sorry, wrong choice. Press any key to continue</p>";
+                            }
+                        }
+                    }
+                ],
+            };
+
+            warmup_trial_list[i] = warmup_trial_i;
+            WARMUP_TRIAL_ID++; //increment global trial count/ID
+        }
+        var warmup_block = {
+            timeline: warmup_trial_list,
+            repetitions: 1,
+            conditional_function: function(){return CONTINUE_EXPT;}
+        };
+        var preload_warmup_block = {
+            type: jsPsychPreload,
+            trials: [warmup_block],
+            conditional_function: function(){return CONTINUE_EXPT;}
+        };
+       timeline.push(preload_warmup_block);
+       timeline.push(warmup_block);
+
+
+        /*******************************************************************************/
+        /*********** pre-screen trials *****************************************************/
+        /*******************************************************************************/
+        var prescreen_intro    = {
+            type:   jsPsychInstructions,
+            pages:  PRESCREENING_TEXT,
+            show_clickable_nav: true,
+        };
+        timeline.push(prescreen_intro);
+
+        var prescreen_trial_list   = new Array(num_prescreen_trials);
+        for (var i = 0; i < prescreen_stimuli.length; i++) {
+            let test_url        = URL_FACES_PREFIX.concat(prescreen_stimuli[i][0], URL_SUFFIX); 
+            let token1_url      = URL_FACES_PREFIX.concat(prescreen_stimuli[i][1], URL_SUFFIX); 
+            let token2_url      = URL_FACES_PREFIX.concat(prescreen_stimuli[i][2], URL_SUFFIX); 
+
+            var test            = '<img src='+ test_url + ' width=' + IMG_SIZE_PX + '/>';
+            var answer          = 0;
+            if(Math.random() < 0.50) {
+                var ch1         = '<img src='+ token1_url + ' width=' + IMG_SIZE_PX + '/>';
+                var ch2         = '<img src='+ token2_url + ' width=' + IMG_SIZE_PX + '/>';
+                var answer      = 0;
+            }
+            else {
+                var ch2         = '<img src='+ token1_url + ' width=' + IMG_SIZE_PX + '/>';
+                var ch1         = '<img src='+ token2_url + ' width=' + IMG_SIZE_PX + '/>';
+                var answer      = 1;
+            }
+            var prescreen_trial_i   = {
+                timeline: [ fixation, 
+                    
+                    // test image 
+                    {
+                        type: jsPsychImageButtonResponse,
+                        stimulus: test_url, 
+                        stimulus_height: IMG_SIZE_PX, 
+                        choices:[],
+                        trial_duration: TEST_TRIAL_DURATION,
+                        stimulus_duration: STIM_DURATION_MS,
+                    },
+
+                    // token images
+                    {
+                        type: jsPsychHtmlButtonResponse,
+                        stimulus: '<p> Which face did you see? </p>',
+                        button_html: [ch1,ch2],
+                        choices: ['left','right'],
+                        data: {
+                            task: 'prescreen',
+                            correct_response: answer
+                        },
+                    },
+
+                ],
+            };
+
+            prescreen_trial_list[i] = prescreen_trial_i;
+            PRESCREEN_TRIAL_ID++; //increment global trial count/ID
+        }
+        var prescreen_block = {
+            timeline: prescreen_trial_list,
+            repetitions: 1,
+            conditional_function: function(){return CONTINUE_EXPT;}
+        };
+        var preload_prescreen_block = {
+            type: jsPsychPreload,
+            trials: [prescreen_block],
+            conditional_function: function(){return CONTINUE_EXPT;}
+        };
+        var debrief_prescreen_trials = {
+            type: jsPsychHtmlKeyboardResponse,
+            stimulus: function() {
+                var prescreen_obj   = jsPsych.data.get().filter({task: 'prescreen'});
+                var num_prescreens  = prescreen_obj.trials.length;
+                var corrects        = new Array(num_prescreens);
+                for (var i = 0; i < num_prescreens; i++) {
+                    if(prescreen_obj.trials[i].correct_response == prescreen_obj.trials[i].response) {
+                        corrects[i] = 1;
+                    } else {
+                        corrects[i] = 0;
+                    }
+                }
+                //var correct_trials = trials.filter({correct: true});
+                var accuracy = Math.round(corrects.reduce((a,b) => a+b, 0) / corrects.length * 100);
+                //var rt = Math.round(correct_trials.select('rt').mean());
+                if(accuracy < CATCH_THRESH) {
+                    CONTINUE_EXPT = false;
+                    return `<p>You responded correctly on ${accuracy}% on the practice images.</p>
+                    <p>Unfortunately, we will have to abort the HIT because we require a minimum performance of ${CATCH_THRESH}%</p>
+                    <p>Press any key on the keyboard to continue.</p>`;
+                } 
+                else {
+                    return `<p>You responded correctly on ${accuracy}% on the practice images.</p>
+                    <p>You\'re doing great! Looks like the experiment suites you well!</p>
+                    <p>Press any key on the keyboard to continue.</p>`;
+                }
+            },
+            conditional_function: function(){return CONTINUE_EXPT;}
+        };
+        timeline.push(preload_prescreen_block);
+        timeline.push(prescreen_block);
+        timeline.push(debrief_prescreen_trials);
+
+
+
+        /*********** define catch trials *****************************************************/
+        var catch_trial_list    = new Array(num_catch_trials);
+        for (var i = 0; i < num_catch_trials; i++) {
+            
+            let test_url        = catch_stimuli[i]; 
+            let token1_url      = catch_stimuli[i];
+            let token2_url      = catch_stimuli[(i+1)%num_catch_trials];
+
+            var test            = '<img src='+ test_url + ' width=' + IMG_SIZE_PX + '/>';
+            var answer          = 0;
+            if(Math.random() < 0.60) {
+                var ch1         = '<img src='+ token1_url + ' width=' + IMG_SIZE_PX + '/>';
+                var ch2         = '<img src='+ token2_url + ' width=' + IMG_SIZE_PX + '/>';
+                var answer      = 0;
+            }
+            else {
+                var ch2         = '<img src='+ token1_url + ' width=' + IMG_SIZE_PX + '/>';
+                var ch1         = '<img src='+ token2_url + ' width=' + IMG_SIZE_PX + '/>';
+                var answer      = 1;
+            }
+            var catch_trial_i   = {
+                timeline: [ fixation, 
+                    
+                    // test image 
+                    {
+                        type: jsPsychImageButtonResponse,
+                        stimulus: test_url, 
+                        stimulus_height: IMG_SIZE_PX, 
+                        choices:[],
+                        trial_duration: TEST_TRIAL_DURATION,
+                        stimulus_duration: STIM_DURATION_MS,
+                    },
+
+                    // token images
+                    {
+                        type: jsPsychHtmlButtonResponse,
+                        stimulus: '<p> Which object did you see? </p>',
+                        button_html: [ch1,ch2],
+                        choices: ['left','right'],
+                        data: {
+                            task: 'catch',
+                            correct_response: answer
+                        },
+                    }
+                ],
+            };
+
+            catch_trial_list[i] = catch_trial_i;
+            CATCH_TRIAL_ID++; //increment global trial count/ID
+        }
+        var catch_block_i = {
+            timeline: catch_trial_list,
+            repetitions: 1,
+            conditional_function: function(){return CONTINUE_EXPT;}
+        };
+        var preload_catch_block_i = {
+            type: jsPsychPreload,
+            trials: [catch_block_i],
+            conditional_function: function(){return CONTINUE_EXPT;}
+        };
+        var debrief_catch_trials = {
+            type: jsPsychHtmlKeyboardResponse,
+            stimulus: function() {
+                var catch_obj       = jsPsych.data.get().filter({task: 'catch'});
+                var num_catches     = catch_obj.trials.length;
+                var correct_catches = new Array(num_catches);
+                for (var i = 0; i < num_catches; i++) {
+                    if(catch_obj.trials[i].correct_response == catch_obj.trials[i].response) {
+                        correct_catches[i] = 1;
+                    } else {
+                        correct_catches[i] = 0;
+                    }
+                }
+                var accuracy_catch = Math.round(correct_catches.reduce((a,b) => a+b, 0) / correct_catches.length * 100);
+
+                var test_obj        = jsPsych.data.get().filter({task: 'test'});
+                var num_test        = test_obj.trials.length;
+                var correct_tests        = new Array(num_test);
+                for (var i = 0; i < num_test; i++) {
+                    if(test_obj.trials[i].correct_response == test_obj.trials[i].response) {
+                        correct_tests[i] = 1;
+                    } else {
+                        correct_tests[i] = 0;
+                    }
+                }
+                var accuracy_test = Math.round(correct_tests.reduce((a,b) => a+b, 0) / correct_tests.length * 100);
+
+                if(CONTINUE_EXPT) {
+                    if(accuracy_catch < CATCH_THRESH || accuracy_test <= TEST_THRESH) {
+                        CONTINUE_EXPT = false;
+                        return `<p>Sorry, your responses were below the threshold of ${TEST_THRESH}% correct.</p>
+                        <p>Unfortunately, we will have to abort the experiment.</p>
+                        <p>Press any key on the keyboard to continue.</p>`;
+                    } 
+                    else {
+                        return `<p>You're doing great! Thanks for paying attention to the experiment!</p>
+                        <p>We will continue with your HIT.</p>
+                        <p>Press any key on the keyboard to continue the HIT.</p>`;
+                    }
+                }
+                else {
+                    return `<p>Press any key on the keyboard to exit the HIT.</p>`;
+                }
+
+            },
+            conditional_function: function(){return CONTINUE_EXPT;}
+        };
+
+        /*****************************************************************************************/
+        /*********** test phase & exposure phases ************************************************/
+        /*****************************************************************************************/
+        while(EXPOSURE_COUNT < NUM_EXPOSURE_PHASES) {
+
+            /* TEST PHASE */
+            var test_phase_images   = TEST_PHASE_SETS[EXPOSURE_COUNT];
+            var test_trial_list     = new Array(num_test_images + 1);
+            
+            // test block instructions
+            var test_instructions = {
+                type:   jsPsychInstructions,
+                pages:  TEST_BLOCK_INSTRUCTIONS,
+                show_clickable_nav: true,
+                conditional_function: function(){return CONTINUE_EXPT;}
+            };
+            test_trial_list[0]      = test_instructions;
+            // trials
+            for (var i = 1; i < num_test_images+1; i++) {
+                
+                let test_url        = URL_FACES_PREFIX.concat(test_phase_images[i-1][0], URL_SUFFIX); 
+                let token1_url      = URL_FACES_PREFIX.concat(test_phase_images[i-1][1], URL_SUFFIX);
+                let token2_url      = URL_FACES_PREFIX.concat(test_phase_images[i-1][2], URL_SUFFIX);
+
+                var answer          = 0;
+                if(Math.random() < 0.50) {
+                    var ch1         = '<img src='+ token1_url + ' width=' + IMG_SIZE_PX + '/>';
+                    var ch2         = '<img src='+ token2_url + ' width=' + IMG_SIZE_PX + '/>';
+                    answer          = 0;
+                }
+                else {
+                    var ch2         = '<img src='+ token1_url + ' width=' + IMG_SIZE_PX + '/>';
+                    var ch1         = '<img src='+ token2_url + ' width=' + IMG_SIZE_PX + '/>';
+                    answer          = 1;
+                }
+
+                var test_trial_i    = {
+                    timeline: [ fixation, 
+                        
+                        // test image 
+                        {
+                            type: jsPsychImageButtonResponse,
+                            stimulus: test_url, 
+                            stimulus_height: IMG_SIZE_PX, 
+                            choices:[],
+                            trial_duration: TEST_TRIAL_DURATION,
+                            stimulus_duration: STIM_DURATION_MS,
+                            data: {"trial_num": TRIAL_ID, "id": test_phase_images[i-1][0]}
+                        },
+
+                        // token images
+                        {
+                            stimulus: '<p> Which object did you see? </p>',
+                            type: jsPsychHtmlButtonResponse,
+                            button_html: [ch1, ch2],
+                            choices: ['left','right'],
+                            data: {
+                                trial_num: TRIAL_ID, 
+                                tokens: [test_phase_images[i-1][1], test_phase_images[i-1][2]],
+                                task: 'test',
+                                correct_response: answer
+                            }
+                        }
+                    ]
+                }; 
+                test_trial_list[i] = test_trial_i;
+                TRIAL_ID++; //increment global trial count/ID
+            }
+            var test_block_i = {
+                timeline: test_trial_list,
+                repetitions: 1,
+                conditional_function: function(){return CONTINUE_EXPT;}
+            }
+            var preload_test_block_i = {
+                type: jsPsychPreload,
+                trials: [test_block_i],
+                conditional_function: function(){return CONTINUE_EXPT;}
+            }
+            timeline.push(preload_test_block_i);
+            timeline.push(test_block_i);
+
+            timeline.push(preload_catch_block_i);
+            timeline.push(catch_block_i);
+            timeline.push(debrief_catch_trials);
+
+            /* EXPOSURE PHASE */
+            // transition to exposure phase
+            var expo_trial_list     = new Array(num_exposure_events+1);
+            var exposure_instructions = {
+                type:   jsPsychInstructions,
+                pages:  EXPOSURE_BLOCK_INSTRUCTIONS,
+                show_clickable_nav: true,
+                conditional_function: function(){return CONTINUE_EXPT;}
+            };
+            expo_trial_list[0] = exposure_instructions;
+
+            var grid_x = [-200, -100, -50, 0, 50, 100, 200];
+            var grid_y = [-150, -50, 0, 50, 100, 150];
+            var exposure_phase_image_pairs = EXPOSURE_PHASE_SETS[EXPOSURE_COUNT];
+
+            for (var i = 1; i < num_exposure_events+1; i++) {
+
+                xidx    = Math.floor(Math.random()*grid_x.length);
+                yidx    = Math.floor(Math.random()*grid_y.length);
+
+                x_rel   = grid_x[xidx];
+                y_rel   = grid_y[yidx];
+                
+                var fixation_cross  = '<div style="font-size:60px; position:relative; left:' + x_rel + 'px; top:' + y_rel + 'px;">+</div>';
+
+                var before_img_url  = URL_FACES_PREFIX.concat(exposure_phase_image_pairs[i-1][0], URL_SUFFIX);
+                var after_img_url   = URL_FACES_PREFIX.concat(exposure_phase_image_pairs[i-1][1], URL_SUFFIX); 
+
+                var expo_start  = '<img src=' + before_img_url + 
+                ' style="position:relative; left:'+ x_rel + 'px; top:' + (y_rel-20) + 'px; width:' + IMG_SIZE_PX + 'px"/>';
+                var expo_end    = '<img src=' + after_img_url + 
+                ' style="position:relative; left:'+ x_rel + 'px; top:' + (y_rel-20) + 'px; width:' + IMG_SIZE_PX + 'px"/>';
+                
+                var expo_trial_i    = {
+                    timeline: [{
+                        type: jsPsychHtmlButtonResponse,
+                        stimulus: "",//"<p>press the cross sign</p>", 
+                        button_html: fixation_cross,
+                        choices: ['fixate'],
+                        // stimulus_duration: 10000,
+                        // trial_duration: 10000
+                    },
+                    {
+                        type: jsPsychHtmlButtonResponse,
+                        stimulus: '', 
+                        button_html: expo_start,
+                        choices:['1'],
+                        trial_duration: 112, // 16 ms/frame x 7 frames
+                        stimulus_duration: 112,
+                        post_trial_gap: 0,
+                        data: {
+                            trial_num: TRIAL_ID,
+                            task: 'expo',
+                            exposure_0: exposure_phase_image_pairs[i-1][0]
+                        }
+                    },
+                    {
+                        type: jsPsychHtmlButtonResponse,
+                        stimulus: '',
+                        button_html: expo_end, 
+                        choices:['2'],
+                        trial_duration: 112, // 16 ms/frame x 7 frames
+                        stimulus_duration: 112,
+                        data: {
+                            trial_num: TRIAL_ID, 
+                            task: 'expo',
+                            exposure_1: exposure_phase_image_pairs[i-1][1]
+                        }
+                    }]
+                };
+                expo_trial_list[i] = expo_trial_i;
+                TRIAL_ID++; //increment global trial count/ID
+                
+            }
+            var expo_block_i = {
+                timeline: expo_trial_list,
+                repetitions: 1, 
+                conditional_function: function(){return CONTINUE_EXPT;}
+            }
+            var preload_expo_block_i = {
+                type: jsPsychPreload,
+                trials: [expo_block_i],
+                conditional_function: function(){return CONTINUE_EXPT;}
+            }
+            timeline.push(preload_expo_block_i);
+            timeline.push(expo_block_i);
+
+            EXPOSURE_COUNT++;
+            
+         } // end of while loop (pairs of test & exposure phases)
+    
+        /*********** last test phase *****************************************************/
+        var last_test_trial_list     = new Array(num_test_images+1);
+        var last_instructions = {
+            type:   jsPsychInstructions,
+            pages:  LAST_TEST_BLOCK_INSTRUCTIONS,
+            show_clickable_nav: true,
+            conditional_function: function(){return CONTINUE_EXPT;}
+        };
+        last_test_trial_list[0] = last_instructions;
+        
+        // last test phase //
+        var last_test_phase_images   = TEST_PHASE_SETS[EXPOSURE_COUNT];
+
+        // trials
+        for (var i = 1; i < num_test_images+1; i++) {
+            
+            let test_url        = URL_FACES_PREFIX.concat(last_test_phase_images[i-1][0], URL_SUFFIX); 
+            let token1_url      = URL_FACES_PREFIX.concat(last_test_phase_images[i-1][1], URL_SUFFIX);
+            let token2_url      = URL_FACES_PREFIX.concat(last_test_phase_images[i-1][2], URL_SUFFIX);
+
+            // let ch1             = '<img src='+ token1_url + ' width=' + IMG_SIZE_PX + '/>';
+            // let ch2             = '<img src='+ token2_url + ' width=' + IMG_SIZE_PX + '/>';
+
+            var answer          = 0;
+            if(Math.random() < 0.50) {
+                var ch1         = '<img src='+ token1_url + ' width=' + IMG_SIZE_PX + '/>';
+                var ch2         = '<img src='+ token2_url + ' width=' + IMG_SIZE_PX + '/>';
+                answer          = 0;
+            }
+            else {
+                var ch2         = '<img src='+ token1_url + ' width=' + IMG_SIZE_PX + '/>';
+                var ch1         = '<img src='+ token2_url + ' width=' + IMG_SIZE_PX + '/>';
+                answer          = 1;
+            }
+
+            var test_trial_i    = {
+                timeline: [ fixation, 
+                    
+                    // test image 
+                    {
+                        type: jsPsychImageButtonResponse,
+                        stimulus: test_url, 
+                        stimulus_height: IMG_SIZE_PX, 
+                        choices:[],
+                        trial_duration: TEST_TRIAL_DURATION,
+                        stimulus_duration: STIM_DURATION_MS,
+                        data: {"trial_num": TRIAL_ID, "id": last_test_phase_images[i-1][0]}
+                    },
+
+                    // token images
+                    {
+                        stimulus: '<p> Which object did you see? </p>',
+                        type: jsPsychHtmlButtonResponse,
+                        button_html: [ch1, ch2],
+                        choices: ['left','right'],
+                        data: {
+                            trial_num: TRIAL_ID, 
+                            tokens: [last_test_phase_images[i-1][1], last_test_phase_images[i-1][2]],
+                            task: 'test',
+                            correct_response: answer
+                        }
+                    }
+                ]
+            }; 
+            last_test_trial_list[i] = test_trial_i;
+            TRIAL_ID++; //increment global trial count/ID
+        }
+        var last_test_block     = {
+            timeline: last_test_trial_list,
+            conditional_function: function(){return CONTINUE_EXPT;}
+        }
+        var preload_test_block_i = {
+            type: jsPsychPreload,
+            trials: [last_test_block],
+            conditional_function: function(){return CONTINUE_EXPT;}
+        }
+        timeline.push(preload_test_block_i);
+        timeline.push(last_test_block);
+
+        timeline.push(preload_catch_block_i);
+        timeline.push(catch_block_i);   
+        timeline.push(debrief_catch_trials);
+
+        var debrief_block = {
+          type: jsPsychHtmlButtonResponse,
+          stimulus: 'Complete! <br> Press the submit button to submit your HIT.',
+          prompt: 'Thank you!',
+          choices: ['submit']
+        };
+        timeline.push(debrief_block);
+
+        /* start experiment */
+        jsPsych.run(timeline);
+
+    </script>
+
+</form>
+</html>
